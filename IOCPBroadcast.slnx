@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="BroadcastClient/BroadcastClient.vcxproj" Id="8324da55-e05b-4bd2-a743-a803a3f89600" />
+  <Project Path="BroadcastServer/BroadcastServer.vcxproj" Id="8e9c2fd2-6ddd-40eb-a3cf-58e5170452b0" />
+</Solution>
