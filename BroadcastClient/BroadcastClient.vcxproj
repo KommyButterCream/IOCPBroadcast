@@ -149,6 +149,10 @@
   <ItemGroup>
     <ClCompile Include="BroadcastClient.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\Common\BroadcastProtocol.h" />
+    <ClInclude Include="BroadcastClient.h" />
+  </ItemGroup>
   <ItemDefinitionGroup Condition="'$(Platform)'=='x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)..\..\Module\IOCPNetwork\IOCPNetwork;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>

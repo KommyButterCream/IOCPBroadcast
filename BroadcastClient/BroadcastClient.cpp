@@ -1,3 +1,5 @@
+#include "../Common/BroadcastProtocol.h"
+
 #include "IOCPClient.h"
 
 int main()
