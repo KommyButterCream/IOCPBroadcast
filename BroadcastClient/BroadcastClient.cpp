@@ -5,22 +5,28 @@
 
 #include "../Common/BroadcastProtocol.h"
 
+#include <array> // for std::array
 #include <chrono>     // for std::chrono::hours, std::chrono::milliseconds
+#include <cstddef>    // for std::size_t
 #include <cstdint>    // for std::uint32_t
 #include <exception>  // for std::exception
 #include <iostream>   // for std::cin, std::cout, std::cerr
 #include <limits>     // for std::numeric_limits
+#include <map>        // for std::map
 #include <mutex>      // for std::lock_guard, std::unique_lock
-#include <string>     // for std::string, std::getline
+#include <string>     // for std::string, std::getline, std::to_string
 #include <string_view> // for std::string_view
 #include <syncstream> // for std::osyncstream
 #include <utility>    // for std::move
+#include <vector>     // for std::vector
 
 namespace
 {
     // 중단점에서 오래 대기할 때 서버 설정과 함께 활성화한다.
     constexpr bool EnableDebugTimeouts = false;
     constexpr std::chrono::hours DebugTimeout{ 1 };
+
+    constexpr std::uint32_t k_TestMessageCount = 10;
 }
 
 int BroadcastClient::RunClient()
@@ -143,6 +149,7 @@ int BroadcastClient::RunClient()
     }
 
     int exitCode = 0;
+    bool verifyRequested = false;
 
     if (!ready)
     {
@@ -156,7 +163,9 @@ int BroadcastClient::RunClient()
         std::osyncstream{ std::cout }
             << "Connected as " << name << ".\n"
             << "Enter a message, or /quit to stop.\n"
-            << "If the server disconnects, press Enter to finish.\n";
+            << "If the server disconnects, press Enter to finish.\n"
+            << "Use /burst to send " << k_TestMessageCount << " test messages.\n"
+            << "Use /verify to stop and verify Alice/Bob test results.\n";
 
         std::uint32_t sequence = 1;
         std::string message;
@@ -190,6 +199,43 @@ int BroadcastClient::RunClient()
             if (ended || message == "/quit")
             {
                 break;
+            }
+
+            if (message == "/verify")
+            {
+                verifyRequested = true;
+
+                break;
+            }
+
+            if (message == "/burst")
+            {
+                if (sequence != 1)
+                {
+                    std::osyncstream{ std::cerr }
+                    << "Use /burst once on a fresh connection.\n";
+
+                    continue;
+                }
+
+                for (std::uint32_t index = 1; index <= k_TestMessageCount; ++index)
+                {
+                    const std::string testMessage = "Burst #" + std::to_string(index);
+
+                    if (!SendBroadcast(name, testMessage, sequence))
+                    {
+                        std::osyncstream{ std::cerr }
+                        << "Burst stopped at sequence=" << sequence << '\n';
+
+                        exitCode = 1;
+
+                        break;
+                    }
+
+                    ++sequence;
+                }
+
+                continue;
             }
 
             if (message.empty())
@@ -242,6 +288,11 @@ int BroadcastClient::RunClient()
 
     std::osyncstream{ std::cout }
     << "BroadcastClient stopped.\n";
+
+    if (verifyRequested && !VerifyBroadcastTest())
+    {
+        exitCode = 1;
+    }
 
     return exitCode;
 }
@@ -324,6 +375,14 @@ void BroadcastClient::OnBroadcastPacket(IOCPNetwork::ClientSession& session, IOC
             << '\n';
 
         return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock{ m_stateMutex };
+
+        auto& received = m_receivedMessages[std::string{ message.name }];
+
+        received.push_back(ReceivedMessage{ message.sequence, std::string{ message.message } });
     }
 
     std::osyncstream{ std::cout }
@@ -413,6 +472,104 @@ bool BroadcastClient::SendBroadcast(
         << '\n';
 
     return true;
+}
+
+bool BroadcastClient::VerifyBroadcastTest()
+{
+    // Alice, Bob 2개 클라이언트로 name 사용하여 테스트 진행
+    constexpr std::array<std::string_view, 2> ExpectedSenders{
+        "Alice",
+        "Bob"
+    };
+
+    std::map<std::string, std::vector<ReceivedMessage>> received;
+
+    {
+        std::lock_guard<std::mutex> lock{ m_stateMutex };
+
+        received = m_receivedMessages;
+    }
+
+    bool passed = true;
+
+    if (received.size() != ExpectedSenders.size())
+    {
+        std::osyncstream{ std::cerr }
+            << "[Verify failed] expectedSenders="
+            << ExpectedSenders.size()
+            << ", actualSenders=" << received.size()
+            << '\n';
+
+        passed = false;
+    }
+
+    for (const auto sender : ExpectedSenders)
+    {
+        const auto found = received.find(std::string{ sender });
+
+        if (found == received.end())
+        {
+            std::osyncstream{ std::cerr }
+                << "[Verify failed] No messages from "
+                << sender << '\n';
+
+            passed = false;
+
+            continue;
+        }
+
+        const auto& messages = found->second;
+
+        if (messages.size() != k_TestMessageCount)
+        {
+            std::osyncstream{ std::cerr }
+                << "[Verify failed] sender=" << sender
+                << ", expectedCount=" << k_TestMessageCount
+                << ", actualCount=" << messages.size()
+                << '\n';
+
+            passed = false;
+        }
+
+        for (std::size_t index = 0; index < messages.size(); ++index)
+        {
+            const auto expectedSequence =
+                static_cast<std::uint32_t>(index + 1);
+
+            const std::string expectedMessage =
+                "Burst #" + std::to_string(expectedSequence);
+
+            if (messages[index].sequence != expectedSequence ||
+                messages[index].message != expectedMessage)
+            {
+                std::osyncstream{ std::cerr }
+                    << "[Verify failed] sender=" << sender
+                    << ", position=" << index + 1
+                    << ", expectedSequence=" << expectedSequence
+                    << ", actualSequence=" << messages[index].sequence
+                    << ", actualMessage=" << messages[index].message
+                    << '\n';
+
+                passed = false;
+            }
+        }
+    }
+
+    if (passed)
+    {
+        std::osyncstream{ std::cout }
+            << "[Verify PASS] Alice/Bob: "
+            << ExpectedSenders.size() * k_TestMessageCount
+            << " messages (" << k_TestMessageCount
+            << " per sender), content and order matched.\n";
+    }
+    else
+    {
+        std::osyncstream{ std::cout }
+            << "[Verify FAIL] Missing, extra, reordered, or incorrect messages.\n";
+    }
+
+    return passed;
 }
 
 int main()
