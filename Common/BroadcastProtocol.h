@@ -18,8 +18,7 @@ namespace IOCPBroadcast
 
 	inline constexpr std::size_t BroadcastPrefixSize = 6;
 
-	inline constexpr std::size_t MaxBroadcastPayloadSize =
-		BroadcastPrefixSize + MaxNameBytes + MaxMessageBytes;
+	inline constexpr std::size_t MaxBroadcastPayloadSize = BroadcastPrefixSize + MaxNameBytes + MaxMessageBytes;
 
 	// 메시지번호[4바이트] 이름길이[2바이트] 이름[N바이트] 메시지[나머지 바이트]
 
