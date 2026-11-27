@@ -3,6 +3,7 @@
 #include "../Common/BroadcastProtocol.h"
 
 #include <algorithm>  // for std::find
+#include <chrono>     // for std::chrono::hours
 #include <cstddef>    // for std::size_t
 #include <exception>  // for std::exception
 #include <iostream>   // for std::cin, std::cout, std::cerr
@@ -11,7 +12,6 @@
 #include <syncstream> // for std::osyncstream
 #include <utility>    // for std::move
 #include <vector>     // for std::erase
-#include <chrono>     // for std::chrono::hours
 
 namespace
 {
@@ -60,7 +60,7 @@ int BroadcastServer::RunServer()
 
 	IOCPNetwork::ServerOptions options;
 	options.bindAddress = "127.0.0.1";
-	options.port = 9000;
+	options.port = 9001;
 	options.maxConnections = 16;
 	options.network.ioWorkerCount = 2;
 	options.network.jobWorkerCount = 2;
